@@ -1,4 +1,4 @@
-package com.interswitch.departmentmicroservices.controller;
+package com.interswitch.employeemicroservices.controller;
 
 
 import org.springframework.beans.factory.annotation.Value;
@@ -15,7 +15,7 @@ public class MessageController {
     private String message;
 
 
-    @GetMapping("message")
+    @GetMapping("/users/message")
     public String message(){
         return message;
     }

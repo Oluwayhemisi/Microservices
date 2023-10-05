@@ -7,15 +7,16 @@ import com.interswitch.employeemicroservices.dto.EmployeeDto;
 import com.interswitch.employeemicroservices.exceptions.EmployeeException;
 import com.interswitch.employeemicroservices.model.Employee;
 import com.interswitch.employeemicroservices.repository.EmployeeRepository;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.AllArgsConstructor;
-import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
-import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+
+
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,11 +25,13 @@ import java.util.stream.Collectors;
 public class EmployeeServiceImpl implements EmployeeService{
 
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(EmployeeServiceImpl.class);
     private final EmployeeRepository employeeRepository;
 
     private final ModelMapper modelMapper;
 
     private final ApiClient apiClient;
+    private  final WebClient webClient;
 
 
     @Override
@@ -60,12 +63,23 @@ public class EmployeeServiceImpl implements EmployeeService{
         return modelMapper.map(employee,EmployeeDto.class);
     }
 
+
+//    @CircuitBreaker(name = "${spring.application.name}", fallbackMethod = "getDefaultDepartment")
+    @Retry(name = "${spring.application.name}", fallbackMethod = "getDefaultDepartment")
     @Override
     public EmployeeApiResponse getEmployeeById(Long id) {
-        Employee employee = employeeRepository.findById(id).orElseThrow(()-> new EmployeeException("Employee Id does not Exist",404));
-        DepartmentDto departmentDto = apiClient.getDepartmentByDepartmentCode(employee.getDepartmentCode());
 
-        EmployeeDto employeeDto = new EmployeeDto();
+        LOGGER.info("inside getEmployeeById() method");
+        Employee employee = employeeRepository.findById(id).orElseThrow(()-> new EmployeeException("Employee Id does not Exist",404));
+//        DepartmentDto departmentDto = apiClient.getDepartmentByDepartmentCode(employee.getDepartmentCode());
+
+        DepartmentDto departmentDto = webClient.get()
+                .uri("http://localhost:8484/api/v1/department/code/" + employee.getDepartmentCode())
+                .retrieve()
+                .bodyToMono(DepartmentDto.class)
+                .block();
+
+//        EmployeeDto employeeDto = new EmployeeDto();
         EmployeeDto employeeDto1 = modelMapper.map(employee,EmployeeDto.class);
 
         EmployeeApiResponse employeeApiResponse = new EmployeeApiResponse();
@@ -73,6 +87,24 @@ public class EmployeeServiceImpl implements EmployeeService{
         employeeApiResponse.setDepartmentDto(departmentDto);
         return employeeApiResponse;
 
+    }
+
+    public EmployeeApiResponse getDefaultDepartment(Long id, Exception exception){
+
+        LOGGER.info("inside getDefaultDepartment() method");
+        Employee employee = employeeRepository.findById(id).orElseThrow(()-> new EmployeeException("Employee Id does not Exist",404));
+
+        DepartmentDto departmentDto = new DepartmentDto();
+        departmentDto.setDepartmentCode("RD001");
+        departmentDto.setDepartmentName("R & D");
+        departmentDto.setDepartmentDescription("Research and Development");
+
+        EmployeeDto employeeDto1 = modelMapper.map(employee,EmployeeDto.class);
+
+        EmployeeApiResponse employeeApiResponse = new EmployeeApiResponse();
+        employeeApiResponse.setEmployeeDto(employeeDto1);
+        employeeApiResponse.setDepartmentDto(departmentDto);
+        return employeeApiResponse;
     }
 
     @Override
